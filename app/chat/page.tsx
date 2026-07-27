@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { usePathname } from "next/navigation";
-import { supabase } from "../lib/supabaseClient";
+import { safeSupabase, supabase } from "../lib/supabaseClient";
 import Login from "../../components/Login";
 import Block from "../../components/Block";
 import ChatLayout from "./ChatLayout";
@@ -956,11 +956,16 @@ export default function Home() {
                 if (!plainPin) return { error: true };
                 
                 try {
-                  const { data: existUser } = await supabase
+                  const { data: existUser, error: existError } = await safeSupabase
                     .from("profiles")
                     .select("username, pin, email, umur, berat")
                     .ilike("username", inputName)
                     .maybeSingle();
+
+                  if (existError) {
+                    console.error("Supabase login error:", existError);
+                    return { error: true };
+                  }
 
                   const finalUsername = existUser ? existUser.username : inputName.toLowerCase();
                   
@@ -1000,12 +1005,17 @@ export default function Home() {
                   if (existUser?.email) {
                     finalEmail = existUser.email;
                   } else {
-                    const { count } = await supabase.from("profiles").select("*", { count: "exact", head: true });
-                    const nextId = (count || 0) + 1;
+                    const { data: countData, error: countError } = await safeSupabase.from("profiles").select("*", { count: "exact", head: true });
+                    if (countError) {
+                      console.error("Supabase count error:", countError);
+                      return { error: true };
+                    }
+                    const countValue = ((countData as { count?: number } | null)?.count || 0) as number;
+                    const nextId = countValue + 1;
                     finalEmail = `user${nextId}@ipix.fun`;
                   }
                   
-                  const { error: upsertError } = await supabase.from("profiles").upsert(
+                  const { error: upsertError } = await safeSupabase.from("profiles").upsert(
                     {
                       email: finalEmail,
                       username: finalUsername,
