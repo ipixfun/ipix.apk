@@ -81,11 +81,14 @@ export async function POST(request: Request) {
           notification: {
             sound: 'default',
             channelId: 'default',
+            clickAction: 'OPEN_CHAT',
           },
         },
         data: {
           title: String(title),
           body: String(body),
+          route: '/chat?focus=1',
+          click_action: 'OPEN_CHAT',
         },
       };
 
@@ -100,6 +103,8 @@ export async function POST(request: Request) {
       title: String(title),
       body: String(body),
       icon: '/icon.png',
+      url: '/chat?focus=1',
+      actions: [{ action: 'reply', title: 'Balas' }],
     });
 
     // Pastikan VAPID keys tersedia sebelum mengirim web-push

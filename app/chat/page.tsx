@@ -82,12 +82,39 @@ export default function Home() {
 
   const [currentHash, setCurrentHash] = useState("");
 
+  const focusChatInput = useCallback(() => {
+    setTimeout(() => {
+      const input = document.getElementById("chat-input") as HTMLTextAreaElement | null;
+      if (input) {
+        input.scrollIntoView({ behavior: "smooth", block: "center" });
+        input.focus({ preventScroll: true });
+        const len = input.value.length;
+        input.setSelectionRange(len, len);
+      }
+      setUi((prev) => ({ ...prev, inputFocus: true }));
+    }, 250);
+  }, []);
+
   useEffect(() => {
     setCurrentHash(window.location.hash);
     const handleHashChange = () => setCurrentHash(window.location.hash);
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const shouldOpenChat = params.get("focus") === "1" || window.location.hash === "#focus";
+    if (shouldOpenChat) {
+      focusChatInput();
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("focus");
+      nextUrl.hash = "";
+      window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+    }
+  }, [mounted, focusChatInput]);
 
   const CLOUDINARY_CLOUD_NAME = "bjamo8ld";
   const CLOUDINARY_UPLOAD_PRESET = "ipixchat";
@@ -198,6 +225,57 @@ export default function Home() {
     setAuth((p) => ({ ...p, isAuth: false, pin: "" })); 
     window.location.replace("/");
   };
+
+  const showIncomingChatNotification = useCallback((incomingMsg: any) => {
+    if (!incomingMsg || incomingMsg.username === auth.user) return;
+
+    const sender = (incomingMsg.username || "Chat").split("●")[0];
+    const preview = (incomingMsg.pesan || (incomingMsg.image_url ? "📷 Gambar" : "Pesan baru"))
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 70);
+
+    let queue: Array<{ sender: string; count: number; preview: string }> = [];
+    try {
+      const saved = sessionStorage.getItem("ipix_chat_notification_queue");
+      queue = saved ? JSON.parse(saved) : [];
+    } catch {}
+
+    const existing = queue.find((item) => item.sender === sender);
+    if (existing) {
+      existing.count += 1;
+      existing.preview = preview;
+    } else {
+      queue.push({ sender, count: 1, preview });
+    }
+
+    queue = queue.slice(-3);
+    sessionStorage.setItem("ipix_chat_notification_queue", JSON.stringify(queue));
+
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+    const title = queue.length > 1 ? `${queue.length} chat baru` : "1 chat baru";
+    const body = queue.length === 1
+      ? `${sender}: ${preview}`
+      : queue
+          .slice(0, 3)
+          .map((item) => `${item.sender}${item.count > 1 ? ` (${item.count})` : ""}`)
+          .join(" • ");
+
+    const notification = new Notification(title, {
+      body,
+      tag: "ipix-chat-new",
+      icon: "/icon.png",
+      badge: "/icon.png",
+      data: { url: "/chat?focus=1" },
+    });
+
+    notification.onclick = () => {
+      notification.close();
+      window.focus();
+      window.location.href = "/chat?focus=1";
+    };
+  }, [auth.user]);
 
   const fetchData = useCallback(async () => {
     if (!auth.isAuth) return; 
@@ -562,13 +640,7 @@ export default function Home() {
 
         // Jika pesan ditujukan untuk user yang sedang login & dari user lain
         if (newMsg.private_with === auth.user && newMsg.username !== auth.user) {
-          // Tampilkan notifikasi pop-up langsung jika berada di APK WebView / Browser
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(`Pesan baru dari ${newMsg.username.split("●")[0]}`, {
-              body: newMsg.pesan || "Mengirim Gambar",
-              icon: "/icon.png",
-            });
-          }
+          showIncomingChatNotification(newMsg);
         }
       })
       .subscribe();
@@ -618,6 +690,10 @@ export default function Home() {
             // Listener saat notifikasi diklik oleh user
             PushNotifications.addListener("pushNotificationActionPerformed", (notification) => {
               console.log("Push Notification Diklik:", notification);
+              const route = notification.notification?.data?.route || notification.notification?.data?.click_action || "/chat?focus=1";
+              if (typeof window !== "undefined") {
+                window.location.href = route;
+              }
             });
           }
         } catch (err) {
