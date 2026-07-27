@@ -25,11 +25,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 // Inisialisasi Web Push untuk Browser
-webpush.setVapidDetails(
-  'mailto:admin@ipix.fun',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '',
-  process.env.VAPID_PRIVATE_KEY || ''
-);
+// NOTE: Don't set VAPID details at module load time — move into handler
+// to avoid build-time errors when env vars are not available in CI.
 
 export async function POST(request: Request) {
   try {
@@ -104,6 +101,23 @@ export async function POST(request: Request) {
       body: String(body),
       icon: '/icon.png',
     });
+
+    // Pastikan VAPID keys tersedia sebelum mengirim web-push
+    const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY;
+    const vapidPrivate = process.env.VAPID_PRIVATE_KEY || process.env.NEXT_PUBLIC_VAPID_PRIVATE_KEY;
+
+    if (!vapidPublic || !vapidPrivate) {
+      console.error('VAPID keys not configured for web-push');
+      return NextResponse.json({ error: 'VAPID keys untuk web-push belum dikonfigurasi' }, { status: 500 });
+    }
+
+    // Atur VAPID secara dinamis (aman untuk dipanggil tiap request)
+    try {
+      webpush.setVapidDetails('mailto:admin@ipix.fun', vapidPublic, vapidPrivate);
+    } catch (err: any) {
+      console.error('Invalid VAPID keys:', err);
+      return NextResponse.json({ error: 'VAPID keys tidak valid' }, { status: 500 });
+    }
 
     const response = await webpush.sendNotification(subscription, payload);
     return NextResponse.json({ success: true, type: 'webpush', response });
