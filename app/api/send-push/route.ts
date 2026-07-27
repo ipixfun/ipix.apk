@@ -21,9 +21,8 @@ if (!getApps().length) {
   }
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 // Inisialisasi Web Push untuk Browser
 webpush.setVapidDetails(
@@ -42,6 +41,13 @@ export async function POST(request: Request) {
     if (!recipientUsername) {
       return NextResponse.json({ error: 'recipientUsername kosong' }, { status: 400 });
     }
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Supabase configuration missing: SUPABASE URL or KEY not set');
+      return NextResponse.json({ error: 'Supabase configuration tidak tersedia di server' }, { status: 500 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: subData } = await supabase
       .from('push_subscriptions')
